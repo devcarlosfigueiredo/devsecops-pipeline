@@ -1,0 +1,146 @@
+# .github/workflows/dependency-scan.yml
+# ========================================
+# Scan de Dependências — Executa diariamente e em PRs
+#
+# Verifica novas CVEs em dependências existentes.
+# Separa da pipeline principal para poder executar de forma independente.
+
+name: 📦 Dependency Vulnerability Scan
+
+on:
+  schedule:
+    # Executar diariamente às 06:00 UTC
+    - cron: "0 6 * * *"
+  pull_request:
+    paths:
+      - "requirements*.txt"
+      - "Dockerfile"
+      - "pyproject.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  issues: write
+
+jobs:
+  pip-audit:
+    name: "📦 pip-audit — CVE Scan"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências e pip-audit
+        run: |
+          pip install pip-audit==2.7.3
+          pip install -r requirements.txt
+
+      - name: "📦 pip-audit — scan completo"
+        id: audit
+        run: |
+          mkdir -p reports
+          pip-audit \
+            --requirement requirements.txt \
+            --format cyclonedx-json \
+            --output reports/sbom.cdx.json \
+            || true
+          pip-audit \
+            --requirement requirements.txt \
+            --format json \
+            --output reports/pip-audit-full.json \
+            || true
+          echo "Scan concluído"
+
+      - name: "📊 Relatório de vulnerabilidades"
+        run: |
+          python3 << 'EOF'
+          import json, sys
+          try:
+              with open("reports/pip-audit-full.json") as f:
+                  data = json.load(f)
+              deps = data.get("dependencies", [])
+              vulnerable = [d for d in deps if d.get("vulns")]
+              if vulnerable:
+                  print(f"⚠️  {len(vulnerable)} dependência(s) vulnerável(eis):")
+                  for dep in vulnerable:
+                      for vuln in dep["vulns"]:
+                          print(f"  • {dep['name']}=={dep['version']}: {vuln['id']}")
+                          if vuln.get("fix_versions"):
+                              print(f"    Fix disponível: {vuln['fix_versions']}")
+              else:
+                  print("✅ Nenhuma vulnerabilidade conhecida")
+          except Exception as e:
+              print(f"Erro ao processar relatório: {e}")
+          EOF
+
+      - name: "📦 Upload SBOM (CycloneDX)"
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.run_number }}
+          path: reports/sbom.cdx.json
+          retention-days: 90
+
+  trivy-fs-scan:
+    name: "🛡️ Trivy — Filesystem Scan"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: "🛡️ Trivy — scan do filesystem"
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-fs.sarif"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: "📊 Publicar SARIF"
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-filesystem
+
+  create-issue-on-critical:
+    name: "🚨 Criar Issue se CRITICAL encontrado"
+    runs-on: ubuntu-latest
+    needs: [pip-audit, trivy-fs-scan]
+    if: failure() && github.event_name == 'schedule'
+    steps:
+      - name: Criar GitHub Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const today = new Date().toISOString().split('T')[0];
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 [Security] Vulnerabilidades críticas detetadas — ${today}`,
+              body: `## Scan de segurança agendado detetou vulnerabilidades
+
+              **Data:** ${today}
+              **Run:** [#${context.runNumber}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+
+              ### Ação necessária
+              1. Verificar o relatório completo no link acima
+              2. Atualizar dependências vulneráveis
+              3. Re-executar o pipeline para confirmar resolução
+              4. Fechar este issue após resolução
+
+              ### Referências
+              - [GitHub Security Tab](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/security/code-scanning)
+              - [Relatórios do pipeline](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions)
+
+              /cc @security-team
+              `,
+              labels: ['security', 'vulnerability', 'priority: high'],
+            });
