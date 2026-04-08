@@ -265,7 +265,7 @@ jobs:
   # ===========================================================================
   # JOB 5: Container Scan — Trivy
   # ===========================================================================
-  container-scan:
+ container-scan:
     name: "🛡️ Container Scan — Trivy"
     runs-on: ubuntu-latest
     needs: [docker-build]
@@ -282,7 +282,7 @@ jobs:
       - name: Carregar imagem Docker
         run: gunzip -c /tmp/docker-image.tar.gz | docker load
 
-      - name: "🛡️ Trivy — Scan da imagem (SARIF)"
+      - name: "🛡️ Trivy — Scan da imagem"
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: "${{ env.IMAGE_NAME }}:${{ github.sha }}"
@@ -292,27 +292,15 @@ jobs:
           ignore-unfixed: true
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH"
-          trivyignores: ".trivyignore"
 
-      - name: "❌ Trivy — Falhar em CRITICAL"
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: "${{ env.IMAGE_NAME }}:${{ github.sha }}"
-          format: "table"
-          exit-code: "0"
-          ignore-unfixed: true
-          vuln-type: "os,library"
-          severity: "${{ env.CONTAINER_FAIL_SEVERITY }}"
-          trivyignores: ".trivyignore"
-
-      - name: "📊 Publicar SARIF Container Scan"
+      - name: "📊 Publicar SARIF"
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: trivy-container.sarif
           category: trivy-container
 
-      - name: "📦 Upload relatório Container Scan"
+      - name: "📦 Upload relatório"
         uses: actions/upload-artifact@v4
         if: always()
         with:
