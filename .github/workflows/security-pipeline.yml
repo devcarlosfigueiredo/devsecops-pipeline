@@ -265,7 +265,7 @@ jobs:
   # ===========================================================================
   # JOB 5: Container Scan — Trivy
   # ===========================================================================
- container-scan:
+  container-scan:
     name: "🛡️ Container Scan — Trivy"
     runs-on: ubuntu-latest
     needs: [docker-build]
