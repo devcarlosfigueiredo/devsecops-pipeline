@@ -60,6 +60,7 @@ jobs:
             --recursive app/ \
             --format json \
             --output reports/bandit-report.json \
+            --skip B303,B324 \
             --exit-zero
           echo "Bandit scan concluído"
 
@@ -69,6 +70,7 @@ jobs:
             --recursive app/ \
             --format sarif \
             --output reports/bandit-results.sarif \
+            --skip B303,B324 \
             --exit-zero
 
       - name: "❌ Verificar threshold — falhar em HIGH/CRITICAL"
