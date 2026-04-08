@@ -36,9 +36,9 @@ WORKDIR /build
 # ✅ SECURE: Instalar dependências do sistema com versões pinadas
 # --no-cache evita guardar o cache do apk na imagem
 RUN apk add --no-cache \
-    gcc=13.2.1_git20231014-r0 \
-    musl-dev=1.2.4_git20230717-r4 \
-    libffi-dev=3.4.4-r3
+    gcc \
+    musl-dev \
+    libffi-dev
 
 # ✅ SECURE: Copiar apenas requirements primeiro (aproveitar layer cache)
 COPY requirements.txt .
