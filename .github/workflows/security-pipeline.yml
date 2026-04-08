@@ -1,7 +1,4 @@
 # .github/workflows/security-pipeline.yml
-# ==========================================
-# Pipeline de Segurança DevSecOps — Pipeline Principal
-
 name: 🔐 Security Pipeline
 
 on:
@@ -29,13 +26,9 @@ env:
   PYTHON_VERSION: "3.12"
   SAST_FAIL_SEVERITY: "HIGH"
   SCA_FAIL_CVSS: "7.0"
-  CONTAINER_FAIL_SEVERITY: "CRITICAL"
   IAC_FAIL_SEVERITY: "HIGH"
 
 jobs:
-  # ===========================================================================
-  # JOB 1: SAST — Bandit
-  # ===========================================================================
   sast-bandit:
     name: "🔍 SAST — Bandit"
     runs-on: ubuntu-latest
@@ -55,12 +48,11 @@ jobs:
       - name: "🔍 Bandit — SAST scan (JSON)"
         run: |
           mkdir -p reports
-          # --exit-zero: não falhar aqui, decidir abaixo com threshold
           bandit \
             --recursive app/ \
+            --skip B303,B324 \
             --format json \
             --output reports/bandit-report.json \
-            --skip B303,B324 \
             --exit-zero
           echo "Bandit scan concluído"
 
@@ -68,9 +60,9 @@ jobs:
         run: |
           bandit \
             --recursive app/ \
+            --skip B303,B324 \
             --format sarif \
             --output reports/bandit-results.sarif \
-            --skip B303,B324 \
             --exit-zero
 
       - name: "❌ Verificar threshold — falhar em HIGH/CRITICAL"
@@ -81,12 +73,10 @@ jobs:
               with open('reports/bandit-report.json') as f:
                   data = json.load(f)
               issues = data.get('results', [])
-              # Excluir issues em ficheiros de demo (são intencionais)
               real_issues = [
                   i for i in issues
                   if i['issue_severity'] in ('HIGH', 'CRITICAL')
                   and 'DEMO ONLY' not in str(i.get('issue_text', ''))
-                  and '# noqa' not in str(i.get('line_range', ''))
               ]
               print(len(real_issues))
           except Exception as e:
@@ -114,9 +104,6 @@ jobs:
           path: reports/bandit-*.json
           retention-days: 30
 
-  # ===========================================================================
-  # JOB 2: SAST — Semgrep
-  # ===========================================================================
   sast-semgrep:
     name: "🔍 SAST — Semgrep"
     runs-on: ubuntu-latest
@@ -140,7 +127,6 @@ jobs:
             --config p/python \
             --sarif \
             --output reports/semgrep-results.sarif \
-            --error \
             app/ || true
           echo "Semgrep scan concluído"
 
@@ -159,9 +145,6 @@ jobs:
           path: reports/semgrep-results.sarif
           retention-days: 30
 
-  # ===========================================================================
-  # JOB 3: SCA — pip-audit
-  # ===========================================================================
   sca-pip-audit:
     name: "📦 SCA — pip-audit"
     runs-on: ubuntu-latest
@@ -178,14 +161,6 @@ jobs:
 
       - name: Instalar pip-audit
         run: pip install pip-audit==2.7.3
-
-      - name: Instalar dependências do projeto
-        run: |
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          else
-            echo "requirements.txt não encontrado, a continuar..."
-          fi
 
       - name: "📦 pip-audit — verificar CVEs"
         run: |
@@ -228,9 +203,6 @@ jobs:
           path: reports/pip-audit-report.json
           retention-days: 30
 
-  # ===========================================================================
-  # JOB 4: Build Docker
-  # ===========================================================================
   docker-build:
     name: "🐳 Build — Docker"
     runs-on: ubuntu-latest
@@ -262,9 +234,6 @@ jobs:
           path: /tmp/docker-image.tar.gz
           retention-days: 1
 
-  # ===========================================================================
-  # JOB 5: Container Scan — Trivy
-  # ===========================================================================
   container-scan:
     name: "🛡️ Container Scan — Trivy"
     runs-on: ubuntu-latest
@@ -293,14 +262,14 @@ jobs:
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH"
 
-      - name: "📊 Publicar SARIF"
+      - name: "📊 Publicar SARIF Container Scan"
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: trivy-container.sarif
           category: trivy-container
 
-      - name: "📦 Upload relatório"
+      - name: "📦 Upload relatório Container Scan"
         uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -308,9 +277,6 @@ jobs:
           path: trivy-container.sarif
           retention-days: 30
 
-  # ===========================================================================
-  # JOB 6: IaC Scan — Trivy Config
-  # ===========================================================================
   iac-scan:
     name: "🏗️ IaC Scan — Trivy Config"
     runs-on: ubuntu-latest
@@ -344,9 +310,6 @@ jobs:
           path: trivy-iac.sarif
           retention-days: 30
 
-  # ===========================================================================
-  # JOB 7: Security Report Consolidado
-  # ===========================================================================
   security-report:
     name: "📊 Security Report"
     runs-on: ubuntu-latest
@@ -366,7 +329,6 @@ jobs:
         run: |
           python3 << 'PYTHON'
           import json, os, datetime
-          from pathlib import Path
 
           report = {
               "pipeline_run": "${{ github.run_number }}",
@@ -412,9 +374,6 @@ jobs:
           path: reports/security-report.json
           retention-days: 90
 
-  # ===========================================================================
-  # JOB 8: Deploy
-  # ===========================================================================
   deploy:
     name: "🚀 Deploy"
     runs-on: ubuntu-latest
