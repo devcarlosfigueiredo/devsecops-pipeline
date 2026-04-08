@@ -233,7 +233,7 @@ def demo_deserialization():
 # ---------------------------------------------------------------------------
 
 # ❌ INSECURE — MD5/SHA1 para passwords (Bandit B303/B324)
-def _demo_insecure_hash(password: str) -> str:
+def _demo_insecure_hash(password: str) -> str:  # nosec B303 B324
     """MD5 é quebrado para passwords — não usar."""
     return hashlib.md5(password.encode()).hexdigest()  # nosec B324
 
